@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<title>ActionForce</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f4f2ec">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ActionForce">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --paper: #f4f2ec;       /* 和紙の地 */
+    --card: #fbfaf6;
+    --ink: #2a2a28;         /* 墨 */
+    --ink-soft: #6b6a64;
+    --faint: #a3a199;
+    --line: #e6e3da;
+    --accent: #3c4a4a;      /* 抑えた藍墨色 */
+    --terra: #a8554a;       /* 締切超過のみ */
+    --sel: #2a2a28;
+  }
+  body {
+    font-family: "Helvetica Neue", -apple-system, "Hiragino Kaku Gothic ProN", sans-serif;
+    background: #d8d6cf;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; padding: 20px; color: var(--ink);
+  }
+  .phone {
+    width: 390px; height: 844px; background: var(--paper);
+    border-radius: 44px; overflow: hidden; position: relative;
+    box-shadow: 0 24px 70px rgba(0,0,0,.28);
+    border: 10px solid #15140f; display: flex; flex-direction: column;
+  }
+  .statusbar {
+    height: 50px; flex-shrink: 0; display: flex; align-items: flex-end;
+    justify-content: space-between; padding: 0 30px 8px;
+    font-size: 14px; font-weight: 500; color: var(--ink); letter-spacing: .3px;
+  }
+  .notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 110px; height: 28px; background: #15140f;
+    border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; z-index: 50; }
+  /* 実機/インストール時はフレームを外して全画面に */
+  @media (display-mode: standalone), (max-width: 500px) {
+    body { background: var(--paper); padding: 0; display: block; }
+    .phone { width: 100%; height: 100vh; height: 100dvh; border: none; border-radius: 0; box-shadow: none; }
+    .notch { display: none; }
+    .statusbar { display: none; }
+    .navbar { padding-top: calc(env(safe-area-inset-top, 0px) + 14px); }
+    .tabbar { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); height: auto; padding-top: 8px; }
+    .mask { position: fixed; }
+  }
+  /* Nav */
+  .navbar { flex-shrink: 0; padding: 10px 24px 14px; display: flex;
+    align-items: flex-end; justify-content: space-between; }
+  .navbar .title { font-size: 26px; font-weight: 300; letter-spacing: 1px; }
+  .navbar .sub { font-size: 11px; color: var(--faint); letter-spacing: 2px;
+    text-transform: uppercase; margin-bottom: 6px; }
+  .nav-actions { display: flex; gap: 22px; align-items: center; }
+  .nav-btn { background: none; border: none; cursor: pointer; color: var(--ink);
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+  .nav-btn svg { width: 20px; height: 20px; stroke: var(--ink); fill: none; stroke-width: 1.4; }
+  /* Content */
+  .content { flex: 1; overflow-y: auto; }
+  .content::-webkit-scrollbar { display: none; }
+  .screen { display: none; padding: 4px 0 20px; }
+  .screen.active { display: block; }
+  /* Section */
+  .sec-head { font-size: 11px; color: var(--faint); letter-spacing: 2.5px;
+    text-transform: uppercase; padding: 22px 26px 10px; font-weight: 500; }
+  .sec-head .count { color: var(--faint); font-weight: 400; }
+  /* Rows */
+  .group { padding: 0 16px; }
+  .row { position: relative; overflow: hidden; border-radius: 12px; margin-bottom: 2px; }
+  .row-fg { position: relative; z-index: 1; background: var(--paper);
+    display: flex; align-items: flex-start; gap: 14px; padding: 14px 12px;
+    transition: transform .15s ease; cursor: pointer; user-select: none; }
+  .tick { width: 18px; height: 18px; border: 1.3px solid var(--faint);
+    border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+  .row.done .tick { border-color: var(--accent); background: var(--accent); position: relative; }
+  .row.done .tick:after { content:""; position:absolute; left:5px; top:2px; width:5px; height:9px;
+    border:solid var(--paper); border-width:0 1.5px 1.5px 0; transform:rotate(45deg); }
+  .row .body { flex: 1; min-width: 0; }
+  .row .ttl { font-size: 16px; font-weight: 400; line-height: 1.35; color: var(--ink); }
+  .row.done .ttl { color: var(--faint); text-decoration: line-through; }
+  .row .meta { display: flex; gap: 14px; margin-top: 5px; }
+  .row .m { font-size: 12px; color: var(--faint); letter-spacing: .2px; }
+  .row .m.over { color: var(--terra); }
+  .swipe-bg { position: absolute; inset: 0; background: var(--accent); color: var(--paper);
+    display: flex; align-items: center; padding-left: 22px; font-size: 13px;
+    letter-spacing: 1px; text-transform: uppercase; z-index: 0; border-radius: 12px; }
+  .divider { height: .5px; background: var(--line); margin: 0 26px; }
+  /* Empty */
+  .empty { text-align: center; padding: 120px 40px; }
+  .empty .t { font-size: 17px; font-weight: 300; letter-spacing: .5px; margin-bottom: 10px; }
+  .empty .d { font-size: 13px; color: var(--faint); line-height: 1.6; }
+  .empty .mk { width: 30px; height: .5px; background: var(--faint); margin: 0 auto 26px; }
+  /* Tab bar */
+  .tabbar { flex-shrink: 0; height: 82px; background: rgba(244,242,236,.9);
+    backdrop-filter: blur(18px); border-top: .5px solid var(--line);
+    display: flex; padding-bottom: 18px; }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 5px; cursor: pointer; position: relative; }
+  .tab svg { width: 21px; height: 21px; stroke: var(--faint); fill: none; stroke-width: 1.3; }
+  .tab .lbl { font-size: 10px; color: var(--faint); letter-spacing: 1px; text-transform: uppercase; }
+  .tab.active svg { stroke: var(--ink); }
+  .tab.active .lbl { color: var(--ink); }
+  .dot { position: absolute; top: 8px; left: 50%; margin-left: 7px;
+    min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent);
+    color: var(--paper); font-size: 10px; font-weight: 600; display: flex;
+    align-items: center; justify-content: center; padding: 0 4px; }
+  /* Sheet */
+  .mask { position: absolute; inset: 0; background: rgba(20,19,15,.32); z-index: 100;
+    display: none; align-items: flex-end; }
+  .mask.open { display: flex; }
+  .sheet { background: var(--paper); width: 100%; max-height: 93%;
+    border-radius: 20px 20px 0 0; display: flex; flex-direction: column;
+    animation: up .26s ease; }
+  @keyframes up { from { transform: translateY(100%);} to { transform: translateY(0);} }
+  .sheet-nav { display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px 14px; flex-shrink: 0; }
+  .sheet-nav .t { font-size: 15px; font-weight: 400; letter-spacing: 1px; text-transform: uppercase; }
+  .sheet-nav button { font-size: 15px; background: none; border: none; cursor: pointer;
+    color: var(--ink-soft); letter-spacing: .5px; }
+  .sheet-nav button.primary { color: var(--ink); font-weight: 500; }
+  .sheet-nav button:disabled { color: var(--faint); }
+  .sheet-body { overflow-y: auto; padding: 4px 0 36px; }
+  .sheet-body::-webkit-scrollbar { display:none; }
+  .fs { margin: 18px 20px 0; }
+  .fs .lab { font-size: 11px; color: var(--faint); letter-spacing: 2px;
+    text-transform: uppercase; margin-bottom: 8px; padding-left: 2px; }
+  .fcard { background: var(--card); border-radius: 12px; border: .5px solid var(--line); overflow: hidden; }
+  .fcard input[type=text], .fcard textarea {
+    width: 100%; border: none; padding: 15px 16px; font-size: 16px; font-family: inherit;
+    background: transparent; color: var(--ink); outline: none; }
+  .fcard textarea { resize: none; min-height: 130px; line-height: 1.6; }
+  .seg { display: flex; gap: 8px; }
+  .seg button { flex: 1; padding: 13px; border: .5px solid var(--line); background: var(--card);
+    border-radius: 11px; font-size: 14px; letter-spacing: .5px; color: var(--ink-soft);
+    cursor: pointer; font-family: inherit; }
+  .seg button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .grp-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+  .gchip { font-size: 13px; padding: 9px 15px; border-radius: 22px; background: var(--card);
+    border: .5px solid var(--line); color: var(--ink-soft); cursor: pointer; font-family: inherit; }
+  .gchip.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .gchip.add { color: var(--faint); border-style: dashed; }
+  .opt { display: flex; align-items: center; justify-content: space-between;
+    padding: 15px 16px; background: var(--card); border-bottom: .5px solid var(--line); }
+  .opt:last-child { border-bottom: none; }
+  .opt span { font-size: 15px; }
+  select, input[type=datetime-local] { font-size: 15px; font-family: inherit; border: none;
+    background: none; color: var(--ink); outline: none; text-align: right; }
+  .switch { position: relative; width: 46px; height: 28px; }
+  .switch input { display: none; }
+  .slider { position: absolute; inset: 0; background: var(--line); border-radius: 28px;
+    transition: .2s; cursor: pointer; }
+  .slider:before { content:""; position:absolute; width:24px; height:24px; left:2px; top:2px;
+    background:#fff; border-radius:50%; transition:.2s; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider:before { transform: translateX(18px); }
+  .stepper { display: flex; align-items: center; border:.5px solid var(--line); border-radius: 9px; overflow:hidden; }
+  .stepper button { width: 38px; height: 30px; border: none; background: var(--card);
+    font-size: 17px; color: var(--ink); cursor: pointer; }
+  .stepper .v { min-width: 54px; text-align: center; font-size: 14px; }
+  .note { font-size: 12px; color: var(--faint); padding: 14px 24px; line-height: 1.7; letter-spacing:.2px; }
+  .res-thumb { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+    background: var(--line); }
+  .res-ph { width: 50px; height: 50px; border-radius: 8px; flex-shrink: 0; border:.5px solid var(--line);
+    display:flex; align-items:center; justify-content:center; }
+  .res-ph svg { width:20px; height:20px; stroke: var(--faint); fill:none; stroke-width:1.2; }
+  .chev { stroke: var(--faint); fill: none; stroke-width: 1.3; width: 16px; height: 16px; }
+  .sheet-nav button svg { width: 20px; height: 20px; stroke: var(--ink); fill: none; stroke-width: 1.6; vertical-align: middle; }
+  .opt svg:not(.chev) { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.4; }
+  .hint { position:absolute; bottom: 98px; left: 50%; transform: translateX(-50%);
+    background: rgba(20,19,15,.85); color:var(--paper); font-size:12px; letter-spacing:.5px;
+    padding:9px 16px; border-radius:22px; z-index: 60; white-space:nowrap; display:none; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="notch"></div>
+  <div class="statusbar"><span>9:41</span><span>5G &nbsp;100%</span></div>
+
+  <div class="navbar">
+    <div>
+      <div class="sub" id="navSub"></div>
+      <div class="title" id="navTitle">Output</div>
+    </div>
+    <div class="nav-actions" id="navActions"></div>
+  </div>
+
+  <div class="content">
+    <div class="screen active" id="screen-output"></div>
+    <div class="screen" id="screen-input"></div>
+    <div class="screen" id="screen-resolution"></div>
+    <div class="screen" id="screen-settings"></div>
+  </div>
+
+  <div class="tabbar" id="tabbar"></div>
+
+  <div class="mask" id="mask"><div class="sheet" id="sheet"></div></div>
+  <div class="hint" id="hint"></div>
+</div>
+
+<script>
+// ===== SVG icons (thin line) =====
+const I = {
+  output: '<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  input:  '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
+  res:    '<svg viewBox="0 0 24 24"><path d="M6 4h11a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2V4z"/><path d="M6 16h13"/></svg>',
+  set:    '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>',
+  plus:   '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  eye:    '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  eyeoff: '<svg viewBox="0 0 24 24"><path d="M4 4l16 16M9.5 9.7a2.5 2.5 0 0 0 3.3 3.3M6.5 6.7C3.8 8.2 2 12 2 12s4 7 10 7c1.6 0 3-.4 4.3-1M9.8 5.2A9.7 9.7 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-2.2 3"/></svg>',
+  chev:   '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  img:    '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/></svg>'
+};
+
+const TIME = [5,10,15,30,45,60,90,120,180];
+// Output groups (ordered). These are editable in Settings.
+let outGroups = ["Think","Create","Next Move","Daily"];
+let inGroups = [];
+
+let tasks = [
+  { id:1, cat:"output", grp:"Think",     ttl:"事業アイデアを書き出す",      min:30, dl:null,           done:false },
+  { id:2, cat:"output", grp:"Create",    ttl:"プレゼン資料を作る",          min:60, dl:tm(18),         done:false },
+  { id:3, cat:"output", grp:"Next Move", ttl:"○○さんに会う日程を送る",      min:10, dl:yd(12),         done:false },
+  { id:4, cat:"output", grp:"Daily",     ttl:"請求書を送る",                min:5,  dl:null,           done:false },
+  { id:5, cat:"input",  grp:null,        ttl:"『7つの習慣』第3章を読む",    min:45, dl:null,           done:false },
+];
+let resolutions = [
+  { id:1, ttl:"2025 Resolution", period:"2025", body:"インプットよりアウトプット。決断し、手を動かす。塵も積もれば山となる。", img:null },
+];
+let notif = { enabled:true, start:8, end:22 };
+let uid = 100, currentTab = "output", showDone = false;
+
+// ===== 永続化（localStorage）=====
+const LS_KEY = "actionforce_v1";
+function saveState(){
+  try { localStorage.setItem(LS_KEY, JSON.stringify({outGroups,inGroups,tasks,resolutions,notif,uid})); } catch(e){}
+}
+function loadState(){
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if(s){
+      outGroups = s.outGroups ?? outGroups;
+      inGroups  = s.inGroups  ?? inGroups;
+      tasks     = s.tasks     ?? tasks;
+      resolutions = s.resolutions ?? resolutions;
+      notif     = s.notif     ?? notif;
+      uid       = s.uid       ?? uid;
+    }
+  } catch(e){}
+}
+
+function tm(h){ const d=new Date(); d.setDate(d.getDate()+1); d.setHours(h,0,0,0); return d.getTime(); }
+function yd(h){ const d=new Date(); d.setDate(d.getDate()-1); d.setHours(h,0,0,0); return d.getTime(); }
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fdl(ts){ const d=new Date(ts); return `${MON[d.getMonth()]} ${d.getDate()}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function tlabel(m){ if(m>=60){const h=Math.floor(m/60),mm=m%60; return mm?`${h}h ${mm}m`:`${h}h`;} return `${m}m`; }
+function over(t){ return t.dl && !t.done && t.dl<Date.now(); }
+function pend(cat){ return tasks.filter(t=>t.cat===cat && !t.done); }
+function sortR(a,b){ if(a.dl&&b.dl)return a.dl-b.dl; if(a.dl)return -1; if(b.dl)return 1; return a.min-b.min; }
+
+const TABS=[
+  {id:"output", lbl:"Output", icon:I.output},
+  {id:"input",  lbl:"Input",  icon:I.input},
+  {id:"resolution", lbl:"Resolution", icon:I.res},
+  {id:"settings", lbl:"Settings", icon:I.set},
+];
+
+function render(){
+  saveState();
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+currentTab).classList.add('active');
+  renderTabbar(); renderNav();
+  if(currentTab==="output") renderCat("output");
+  if(currentTab==="input") renderCat("input");
+  if(currentTab==="resolution") renderResolution();
+  if(currentTab==="settings") renderSettings();
+}
+
+function renderTabbar(){
+  const bar=document.getElementById("tabbar"); bar.innerHTML="";
+  TABS.forEach(t=>{
+    const d=document.createElement("div"); d.className="tab"+(currentTab===t.id?" active":"");
+    let badge="";
+    if(t.id==="output"&&pend("output").length) badge=`<span class="dot">${pend("output").length}</span>`;
+    if(t.id==="input"&&pend("input").length) badge=`<span class="dot">${pend("input").length}</span>`;
+    d.innerHTML=`${t.icon}<span class="lbl">${t.lbl}</span>${badge}`;
+    d.onclick=()=>{ currentTab=t.id; render(); };
+    bar.appendChild(d);
+  });
+}
+
+function renderNav(){
+  const map={output:["Focus","Output"],input:["Passive · let it flow","New Input"],resolution:["","Resolution"],settings:["","Settings"]};
+  document.getElementById("navSub").textContent=map[currentTab][0];
+  document.getElementById("navTitle").textContent=map[currentTab][1];
+  const a=document.getElementById("navActions"); a.innerHTML="";
+  if(currentTab==="output"||currentTab==="input"){
+    const eye=document.createElement("button"); eye.className="nav-btn"; eye.innerHTML=showDone?I.eyeoff:I.eye;
+    eye.onclick=()=>{showDone=!showDone;render();};
+    const plus=document.createElement("button"); plus.className="nav-btn"; plus.innerHTML=I.plus;
+    plus.onclick=()=>openAdd(currentTab);
+    a.append(eye,plus);
+  } else if(currentTab==="resolution"){
+    const plus=document.createElement("button"); plus.className="nav-btn"; plus.innerHTML=I.plus;
+    plus.onclick=()=>openRes(null); a.append(plus);
+  }
+}
+
+function renderCat(cat){
+  const screenId="screen-"+cat;
+  const el=document.getElementById(screenId);
+  const groups = cat==="output"?outGroups:inGroups;
+  const list=pend(cat);
+  if(list.length===0 && !showDone){
+    el.innerHTML = cat==="output"
+      ? emptyHTML("Nothing in focus","Add a thought, a thing to create,\nor your next move.")
+      : emptyHTML("No new input queued","Deliberate input only.\nDaily input takes care of itself.");
+    return;
+  }
+  let html="";
+  groups.forEach(g=>{
+    const items=list.filter(t=>t.grp===g).sort(sortR);
+    if(items.length===0) return;
+    html+=`<div class="sec-head">${g} <span class="count">· ${items.length}</span></div><div class="group">`;
+    items.forEach(t=>html+=rowHTML(t)); html+=`</div>`;
+  });
+  // ungrouped / no groups defined
+  const ung=list.filter(t=>!groups.includes(t.grp)).sort(sortR);
+  if(ung.length){
+    const lbl = groups.length ? "Other" : (cat==="input"?"Queue":"Items");
+    html+=`<div class="sec-head">${lbl} <span class="count">· ${ung.length}</span></div><div class="group">`;
+    ung.forEach(t=>html+=rowHTML(t)); html+=`</div>`;
+  }
+  if(showDone){ const done=tasks.filter(t=>t.cat===cat&&t.done);
+    if(done.length){ html+=`<div class="sec-head">Completed</div><div class="group">`; done.forEach(t=>html+=rowHTML(t)); html+=`</div>`; } }
+  el.innerHTML=html; attachSwipe(screenId);
+}
+
+function rowHTML(t){
+  let meta=`<span class="m">${tlabel(t.min)}</span>`;
+  if(t.dl) meta+=`<span class="m ${over(t)?'over':''}">${fdl(t.dl)}</span>`;
+  return `<div class="row ${t.done?'done':''}" data-id="${t.id}">
+    <div class="swipe-bg">${t.done?'Reopen':'Done'}</div>
+    <div class="row-fg"><div class="tick"></div>
+      <div class="body"><div class="ttl">${t.ttl}</div><div class="meta">${meta}</div></div>
+    </div></div>`;
+}
+function emptyHTML(t,d){ return `<div class="empty"><div class="mk"></div><div class="t">${t}</div><div class="d">${d.replace(/\n/g,'<br>')}</div></div>`; }
+
+function attachSwipe(screenId){
+  document.querySelectorAll(`#${screenId} .row`).forEach(row=>{
+    const fg=row.querySelector(".row-fg"); let sx=0,dx=0,drag=false; const id=+row.dataset.id;
+    const down=e=>{drag=true; sx=(e.touches?e.touches[0].clientX:e.clientX); fg.style.transition="none";};
+    const move=e=>{if(!drag)return; const x=(e.touches?e.touches[0].clientX:e.clientX); dx=Math.max(0,Math.min(x-sx,110)); fg.style.transform=`translateX(${dx}px)`;};
+    const up=()=>{if(!drag)return; drag=false; fg.style.transition="transform .15s ease";
+      if(dx>64){fg.style.transform="translateX(100%)"; setTimeout(()=>toggle(id),150);} else fg.style.transform="translateX(0)"; dx=0;};
+    row.addEventListener("mousedown",down); window.addEventListener("mousemove",move); window.addEventListener("mouseup",up);
+    row.addEventListener("touchstart",down,{passive:true}); row.addEventListener("touchmove",move,{passive:true}); row.addEventListener("touchend",up);
+    fg.addEventListener("click",()=>{ if(dx===0) toggle(id); });
+  });
+}
+function toggle(id){ const t=tasks.find(x=>x.id===id); if(t){t.done=!t.done; render(); hint(t.done?"Done":"Reopened");} }
+function hint(m){ const h=document.getElementById("hint"); h.textContent=m; h.style.display="block"; clearTimeout(h._t); h._t=setTimeout(()=>h.style.display="none",1400); }
+
+// ===== Resolution =====
+function renderResolution(){
+  const el=document.getElementById("screen-resolution");
+  if(resolutions.length===0){ el.innerHTML=emptyHTML("No resolutions","Keep your intentions in view.\nText or a photo of your notes."); return; }
+  let html=`<div class="sec-head">Intentions</div><div class="group">`;
+  resolutions.forEach(r=>{
+    const thumb=r.img?`<img class="res-thumb" src="${r.img}">`:`<div class="res-ph">${I.res}</div>`;
+    html+=`<div class="row" onclick="openRes(${r.id})"><div class="row-fg">${thumb}
+      <div class="body"><div class="ttl">${r.ttl||'Untitled'}</div>${r.period?`<div class="meta"><span class="m">${r.period}</span></div>`:''}</div>${I.chev}</div></div>`;
+  });
+  html+=`</div>`; el.innerHTML=html;
+}
+
+// ===== Settings =====
+function renderSettings(){
+  const el=document.getElementById("screen-settings");
+  el.innerHTML=`
+    <div class="fs"><div class="lab">Reminders</div><div class="fcard">
+      <div class="opt" onclick="openNotif()"><span>Lock-screen reminders</span>${I.chev}</div>
+    </div></div>
+    <div class="fs"><div class="lab">Groups</div><div class="fcard">
+      <div class="opt" onclick="openGroups('output')"><span>Output groups</span>${I.chev}</div>
+      <div class="opt" onclick="openGroups('input')"><span>Input groups</span>${I.chev}</div>
+    </div></div>
+    <div class="note">Reminders appear on your lock screen during the hours you set, and the app icon shows how many items are still pending.</div>`;
+}
+
+// ===== Sheet helpers =====
+const mask=document.getElementById("mask"), sheet=document.getElementById("sheet");
+function closeSheet(){ mask.classList.remove("open"); sheet.innerHTML=""; }
+mask.addEventListener("click",e=>{ if(e.target===mask) closeSheet(); });
+
+// ----- Add task -----
+let dft={};
+function openAdd(cat){ dft={cat, grp: cat==="output"?outGroups[0]:null, min:15, hasDl:false, dl:"", ttl:""}; renderAdd(); mask.classList.add("open"); }
+function renderAdd(){
+  const groups = dft.cat==="output"?outGroups:inGroups;
+  sheet.innerHTML=`
+    <div class="sheet-nav"><button onclick="closeSheet()">Cancel</button><span class="t">New ${dft.cat==='output'?'Output':'Input'}</span>
+      <button class="primary" id="sv" onclick="saveTask()" ${dft.ttl.trim()?'':'disabled'}>Add</button></div>
+    <div class="sheet-body">
+      <div class="fs"><div class="fcard"><input type="text" id="tt" placeholder="内容を入力（日本語OK）" value="${dft.ttl}"></div></div>
+      <div class="fs"><div class="lab">Type</div><div class="seg">
+        <button class="${dft.cat==='output'?'on':''}" onclick="setType('output')">Output</button>
+        <button class="${dft.cat==='input'?'on':''}" onclick="setType('input')">Input</button>
+      </div></div>
+      <div class="fs"><div class="lab">Group</div><div class="grp-wrap">
+        ${groups.map(g=>`<button class="gchip ${dft.grp===g?'on':''}" onclick="setGrp('${g}')">${g}</button>`).join('')}
+        <button class="gchip ${dft.grp===null?'on':''}" onclick="setGrp(null)">None</button>
+        <button class="gchip add" onclick="addGrp()">+ New</button>
+      </div></div>
+      <div class="fs"><div class="lab">Est. time</div><div class="fcard">
+        <div class="opt"><span>Duration</span>
+          <select id="mn" onchange="dft.min=+this.value">${TIME.map(m=>`<option value="${m}" ${m===dft.min?'selected':''}>${tlabel(m)}</option>`).join('')}</select>
+        </div></div></div>
+      <div class="fs"><div class="lab">Deadline</div><div class="fcard">
+        <div class="opt"><span>Set a deadline</span>
+          <label class="switch"><input type="checkbox" ${dft.hasDl?'checked':''} onchange="toggleDl(this.checked)"><span class="slider"></span></label></div>
+        ${dft.hasDl?`<div class="opt"><span>When</span><input type="datetime-local" value="${dft.dl}" onchange="dft.dl=this.value"></div>`:''}
+      </div></div>
+    </div>`;
+  document.getElementById("tt").addEventListener("input",e=>{dft.ttl=e.target.value; document.getElementById("sv").disabled=!dft.ttl.trim();});
+}
+function setType(c){ dft.cat=c; dft.grp = c==="output"?outGroups[0]:null; renderAdd(); }
+function setGrp(g){ dft.grp=g; renderAdd(); }
+function addGrp(){ const n=prompt("New group name:"); if(n&&n.trim()){ const arr=dft.cat==="output"?outGroups:inGroups; arr.push(n.trim()); dft.grp=n.trim(); renderAdd(); } }
+function toggleDl(v){ dft.hasDl=v; if(v&&!dft.dl){ const d=new Date(Date.now()+3600000); dft.dl=d.toISOString().slice(0,16);} renderAdd(); }
+function saveTask(){ dft.ttl=document.getElementById("tt").value.trim(); if(!dft.ttl)return;
+  tasks.push({id:++uid,cat:dft.cat,grp:dft.grp,ttl:dft.ttl,min:dft.min,dl:dft.hasDl&&dft.dl?new Date(dft.dl).getTime():null,done:false});
+  closeSheet(); render(); hint("Added"); }
+
+// ----- Resolution edit -----
+function openRes(id){
+  const r=id?resolutions.find(x=>x.id===id):null; const c=r?{...r}:{ttl:"",period:"",body:"",img:null};
+  sheet.innerHTML=`
+    <div class="sheet-nav"><button onclick="closeSheet()">Cancel</button><span class="t">${r?'Edit':'New'}</span>
+      <button class="primary" onclick="saveRes(${id||'null'})">Save</button></div>
+    <div class="sheet-body">
+      <div class="fs"><div class="lab">Title</div><div class="fcard"><input type="text" id="rt" placeholder="例: 2025年の決意" value="${c.ttl}"></div></div>
+      <div class="fs"><div class="lab">Period</div><div class="fcard"><input type="text" id="rp" placeholder="例: 2025 / Q1 / Jan" value="${c.period||''}"></div></div>
+      <div class="fs"><div class="lab">Notes</div><div class="fcard"><textarea id="rb" placeholder="自由に記述">${c.body||''}</textarea></div></div>
+      <div class="fs"><div class="lab">Image</div><div class="fcard">
+        <div id="rpv" style="padding:${c.img?'12px':'0'}">${c.img?`<img src="${c.img}" style="width:100%;border-radius:8px">`:''}</div>
+        <div class="opt" style="cursor:pointer" onclick="document.getElementById('rf').click()"><span style="color:var(--accent)">Choose image</span>${I.img}</div>
+        <input type="file" id="rf" accept="image/*" style="display:none"></div></div>
+    </div>`;
+  let img=c.img;
+  document.getElementById("rf").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();
+    fr.onload=ev=>{img=ev.target.result; const p=document.getElementById("rpv"); p.innerHTML=`<img src="${img}" style="width:100%;border-radius:8px">`; p.style.padding="12px";}; fr.readAsDataURL(f);});
+  window._sr=(rid)=>{ const ttl=document.getElementById("rt").value.trim(),period=document.getElementById("rp").value.trim(),body=document.getElementById("rb").value;
+    if(rid){Object.assign(resolutions.find(x=>x.id===rid),{ttl,period,body,img});} else {resolutions.push({id:++uid,ttl,period,body,img});} closeSheet(); render(); };
+}
+function saveRes(id){ window._sr(id); }
+
+// ----- Notifications -----
+function openNotif(){ renderNotif(); mask.classList.add("open"); }
+function renderNotif(){
+  saveState();
+  sheet.innerHTML=`
+    <div class="sheet-nav"><button onclick="closeSheet()">Done</button><span class="t">Reminders</span><span style="width:42px"></span></div>
+    <div class="sheet-body">
+      <div class="fs"><div class="fcard"><div class="opt"><span>Enable reminders</span>
+        <label class="switch"><input type="checkbox" ${notif.enabled?'checked':''} onchange="notif.enabled=this.checked;renderNotif()"><span class="slider"></span></label></div></div>
+        <div class="lab" style="margin-top:8px">Lock-screen reminders for pending items</div></div>
+      ${notif.enabled?`
+      <div class="fs"><div class="lab">Active hours</div><div class="fcard">
+        <div class="opt"><span>Start</span><div class="stepper"><button onclick="adj('start',-1)">−</button><span class="v">${notif.start}:00</span><button onclick="adj('start',1)">+</button></div></div>
+        <div class="opt"><span>End</span><div class="stepper"><button onclick="adj('end',-1)">−</button><span class="v">${notif.end}:00</span><button onclick="adj('end',1)">+</button></div></div>
+      </div></div>
+      <div class="note">Every hour between ${notif.start}:00 and ${notif.end}:00, pending items are surfaced on your lock screen and counted on the app icon.</div>`:''}
+    </div>`;
+}
+function adj(k,d){ if(k==='start')notif.start=Math.max(0,Math.min(notif.end-1,notif.start+d)); else notif.end=Math.max(notif.start+1,Math.min(23,notif.end+d)); renderNotif(); }
+
+// ----- Group manager (Output / Input) -----
+let groupCat="output";
+function groupArr(){ return groupCat==="output"?outGroups:inGroups; }
+function openGroups(cat){ groupCat=cat; renderGroups(); mask.classList.add("open"); }
+function renderGroups(){
+  saveState();
+  const arr=groupArr();
+  const title=groupCat==="output"?"Output groups":"Input groups";
+  sheet.innerHTML=`
+    <div class="sheet-nav"><button onclick="closeSheet()">Done</button><span class="t">${title}</span>
+      <button class="primary" onclick="addGroupMgr()">${I.plus}</button></div>
+    <div class="sheet-body"><div class="fs"><div class="fcard">
+      ${arr.length? arr.map((g,i)=>`<div class="opt"><span onclick="renameGroup(${i})" style="cursor:pointer;flex:1">${g}</span>
+        <div style="display:flex;gap:16px">
+          <button onclick="renameGroup(${i})" style="color:var(--accent);background:none;border:none;cursor:pointer;font-size:13px">Rename</button>
+          <button onclick="delGroup(${i})" style="color:var(--terra);background:none;border:none;cursor:pointer;font-size:13px">Remove</button>
+        </div></div>`).join('') : '<div class="opt"><span style="color:var(--faint)">No groups yet</span></div>'}
+    </div></div>
+    <div class="note">Tap a name to rename it. Use + to add a group. Assign one when you create an item.</div></div>`;
+}
+function addGroupMgr(){ const n=prompt("New group name:"); if(n&&n.trim()){ groupArr().push(n.trim()); renderGroups(); } }
+function renameGroup(i){
+  const arr=groupArr(); const old=arr[i];
+  const n=prompt("Rename group:", old);
+  if(n&&n.trim()&&n.trim()!==old){
+    tasks.forEach(t=>{ if(t.cat===groupCat && t.grp===old) t.grp=n.trim(); });
+    arr[i]=n.trim(); renderGroups();
+  }
+}
+function delGroup(i){
+  const arr=groupArr(); const old=arr[i];
+  tasks.forEach(t=>{ if(t.cat===groupCat && t.grp===old) t.grp=null; });
+  arr.splice(i,1); renderGroups();
+}
+
+loadState();
+render();
+
+// Service Worker 登録（オフライン & インストール対応）
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
