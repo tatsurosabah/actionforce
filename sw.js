@@ -1,5 +1,5 @@
 // ActionForce Service Worker — オフライン対応 & インストール可能化
-const CACHE = "actionforce-v2";
+const CACHE = "actionforce-v3";
 const ASSETS = [
   "./",
   "./index.html",

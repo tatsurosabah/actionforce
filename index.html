@@ -196,7 +196,7 @@
   <div class="content">
     <div class="screen active" id="screen-output"></div>
     <div class="screen" id="screen-input"></div>
-    <div class="screen" id="screen-resolution"></div>
+    <div class="screen" id="screen-journey"></div>
     <div class="screen" id="screen-settings"></div>
   </div>
 
@@ -211,7 +211,7 @@
 const I = {
   output: '<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
   input:  '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
-  res:    '<svg viewBox="0 0 24 24"><path d="M6 4h11a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2V4z"/><path d="M6 16h13"/></svg>',
+  journey: '<svg viewBox="0 0 24 24"><path d="M12 21s7-6.7 7-12a7 7 0 1 0-14 0c0 5.3 7 12 7 12z"/><circle cx="12" cy="9" r="2.3"/></svg>',
   set:    '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>',
   plus:   '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   eye:    '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.5"/></svg>',
@@ -232,8 +232,8 @@ let tasks = [
   { id:4, cat:"output", grp:"Daily",     ttl:"請求書を送る",                min:5,  dl:null,           done:false },
   { id:5, cat:"input",  grp:null,        ttl:"『7つの習慣』第3章を読む",    min:45, dl:null,           done:false },
 ];
-let resolutions = [
-  { id:1, ttl:"2025 Resolution", period:"2025", body:"インプットよりアウトプット。決断し、手を動かす。塵も積もれば山となる。", img:null },
+let journeys = [
+  { id:1, ttl:"東京へ・○○さんに会う", detail:"" },
 ];
 let notif = { enabled:true, start:8, end:22 };
 let uid = 100, currentTab = "output", showDone = false;
@@ -242,6 +242,9 @@ let uid = 100, currentTab = "output", showDone = false;
 const SB_URL = "https://dcaokotbtqsdwbyeghbo.supabase.co";
 const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjYW9rb3RidHFzZHdieWVnaGJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3ODYyNzQsImV4cCI6MjEwMTM2MjI3NH0.JT5DCS72W6HxI358qI4QPG2Ny-8stADAvbWSCzMJBF4";
 const VAPID_PUBLIC = "BH2i-8Ho5-4biLwTnhRjUwkQkmabu7lX2M-n_1qFAN2KbPDC4UyufN5vvkeJ2eOImKHXuaSwrbI6mEsX7-E102s";
+// あなた専用アカウント（自動ログイン用）
+const OWNER_EMAIL = "owner.c4ab98a7a446@gmail.com";
+const OWNER_PASSWORD = "af8351b454c33a7fea2be16dc0bcf2d16f";
 
 let sb = null, user = null;
 if (window.supabase) {
@@ -253,7 +256,7 @@ const LS_KEY = "actionforce_v1";
 let lastSavedAt = null;
 
 function currentStateObj(){
-  return { outGroups, inGroups, tasks, resolutions, notif, uid,
+  return { outGroups, inGroups, tasks, journeys, notif, uid,
     tzOffsetMinutes: new Date().getTimezoneOffset(),
     _savedAt: new Date().toISOString() };
 }
@@ -262,7 +265,7 @@ function applyState(s){
   outGroups = s.outGroups ?? outGroups;
   inGroups  = s.inGroups  ?? inGroups;
   tasks     = s.tasks     ?? tasks;
-  resolutions = s.resolutions ?? resolutions;
+  journeys  = s.journeys  ?? journeys;
   notif     = s.notif     ?? notif;
   uid       = s.uid       ?? uid;
   lastSavedAt = s._savedAt ?? lastSavedAt;
@@ -320,7 +323,7 @@ function sortR(a,b){ if(a.dl&&b.dl)return a.dl-b.dl; if(a.dl)return -1; if(b.dl)
 const TABS=[
   {id:"output", lbl:"Output", icon:I.output},
   {id:"input",  lbl:"Input",  icon:I.input},
-  {id:"resolution", lbl:"Resolution", icon:I.res},
+  {id:"journey", lbl:"Journey", icon:I.journey},
   {id:"settings", lbl:"Settings", icon:I.set},
 ];
 
@@ -331,7 +334,7 @@ function render(){
   renderTabbar(); renderNav();
   if(currentTab==="output") renderCat("output");
   if(currentTab==="input") renderCat("input");
-  if(currentTab==="resolution") renderResolution();
+  if(currentTab==="journey") renderJourney();
   if(currentTab==="settings") renderSettings();
 }
 
@@ -349,7 +352,7 @@ function renderTabbar(){
 }
 
 function renderNav(){
-  const map={output:["Focus","Output"],input:["Passive · let it flow","New Input"],resolution:["","Resolution"],settings:["","Settings"]};
+  const map={output:["Focus","Output"],input:["Passive · let it flow","New Input"],journey:["Where you go · who you meet","Journey"],settings:["","Settings"]};
   document.getElementById("navSub").textContent=map[currentTab][0];
   document.getElementById("navTitle").textContent=map[currentTab][1];
   const a=document.getElementById("navActions"); a.innerHTML="";
@@ -359,9 +362,9 @@ function renderNav(){
     const plus=document.createElement("button"); plus.className="nav-btn"; plus.innerHTML=I.plus;
     plus.onclick=()=>openAdd(currentTab);
     a.append(eye,plus);
-  } else if(currentTab==="resolution"){
+  } else if(currentTab==="journey"){
     const plus=document.createElement("button"); plus.className="nav-btn"; plus.innerHTML=I.plus;
-    plus.onclick=()=>openRes(null); a.append(plus);
+    plus.onclick=()=>openJourney(null); a.append(plus);
   }
 }
 
@@ -408,31 +411,110 @@ function emptyHTML(t,d){ return `<div class="empty"><div class="mk"></div><div c
 
 function attachSwipe(screenId){
   document.querySelectorAll(`#${screenId} .row`).forEach(row=>{
-    const fg=row.querySelector(".row-fg"); let sx=0,dx=0,drag=false; const id=+row.dataset.id;
-    const down=e=>{drag=true; sx=(e.touches?e.touches[0].clientX:e.clientX); fg.style.transition="none";};
-    const move=e=>{if(!drag)return; const x=(e.touches?e.touches[0].clientX:e.clientX); dx=Math.max(0,Math.min(x-sx,110)); fg.style.transform=`translateX(${dx}px)`;};
+    const fg=row.querySelector(".row-fg"); let sx=0,dx=0,drag=false,moved=false; const id=+row.dataset.id;
+    const down=e=>{drag=true; moved=false; sx=(e.touches?e.touches[0].clientX:e.clientX); fg.style.transition="none";};
+    const move=e=>{if(!drag)return; const x=(e.touches?e.touches[0].clientX:e.clientX); dx=Math.max(0,Math.min(x-sx,110)); if(dx>6)moved=true; fg.style.transform=`translateX(${dx}px)`;};
     const up=()=>{if(!drag)return; drag=false; fg.style.transition="transform .15s ease";
       if(dx>64){fg.style.transform="translateX(100%)"; setTimeout(()=>toggle(id),150);} else fg.style.transform="translateX(0)"; dx=0;};
     row.addEventListener("mousedown",down); window.addEventListener("mousemove",move); window.addEventListener("mouseup",up);
     row.addEventListener("touchstart",down,{passive:true}); row.addEventListener("touchmove",move,{passive:true}); row.addEventListener("touchend",up);
-    fg.addEventListener("click",()=>{ if(dx===0) toggle(id); });
+    // タップ：丸(tick)は完了トグル、それ以外は編集を開く（スワイプ後はタップ無効）
+    fg.addEventListener("click",(e)=>{
+      if(moved){ moved=false; return; }
+      if(e.target.classList.contains("tick")){ toggle(id); }
+      else { openTaskEdit(id); }
+    });
   });
 }
 function toggle(id){ const t=tasks.find(x=>x.id===id); if(t){t.done=!t.done; render(); hint(t.done?"Done":"Reopened");} }
 function hint(m){ const h=document.getElementById("hint"); h.textContent=m; h.style.display="block"; clearTimeout(h._t); h._t=setTimeout(()=>h.style.display="none",1400); }
 
-// ===== Resolution =====
-function renderResolution(){
-  const el=document.getElementById("screen-resolution");
-  if(resolutions.length===0){ el.innerHTML=emptyHTML("No resolutions","Keep your intentions in view.\nText or a photo of your notes."); return; }
-  let html=`<div class="sec-head">Intentions</div><div class="group">`;
-  resolutions.forEach(r=>{
-    const thumb=r.img?`<img class="res-thumb" src="${r.img}">`:`<div class="res-ph">${I.res}</div>`;
-    html+=`<div class="row" onclick="openRes(${r.id})"><div class="row-fg">${thumb}
-      <div class="body"><div class="ttl">${r.ttl||'Untitled'}</div>${r.period?`<div class="meta"><span class="m">${r.period}</span></div>`:''}</div>${I.chev}</div></div>`;
+// ===== Journey =====
+// どこに行って誰に会うか / 何を見るか。詳細（この旅で求めるもの）は編集画面でのみ表示。
+function renderJourney(){
+  const el=document.getElementById("screen-journey");
+  if(journeys.length===0){ el.innerHTML=emptyHTML("No journeys","Where will you go, who will you meet,\nwhat will you see?"); return; }
+  let html=`<div class="sec-head">Journeys</div><div class="group">`;
+  journeys.forEach(j=>{
+    html+=`<div class="row" onclick="openJourney(${j.id})"><div class="row-fg">
+      <div class="body"><div class="ttl">${j.ttl||'Untitled'}</div></div>${I.chev}</div></div>`;
   });
   html+=`</div>`; el.innerHTML=html;
 }
+function openJourney(id){
+  const j = id ? journeys.find(x=>x.id===id) : null;
+  const c = j ? {...j} : { ttl:"", detail:"" };
+  sheet.innerHTML=`
+    <div class="sheet-nav">
+      <button onclick="closeSheet()">Cancel</button><span class="t">${j?'Journey':'New Journey'}</span>
+      <button class="primary" onclick="saveJourney(${id||'null'})">Save</button></div>
+    <div class="sheet-body">
+      <div class="fs"><div class="lab">どこへ・誰に会う・何を見る</div><div class="fcard">
+        <input type="text" id="jt" placeholder="例: 東京へ・○○さんに会う" value="${(c.ttl||'').replace(/"/g,'&quot;')}"></div></div>
+      <div class="fs"><div class="lab">この旅で求めているもの</div><div class="fcard">
+        <textarea id="jd" placeholder="この旅で得たいこと・問い・目的を自由に">${c.detail||''}</textarea></div></div>
+      ${ j ? `<div class="fs"><div class="fcard"><div class="opt" style="cursor:pointer" onclick="deleteJourney(${id})"><span style="color:var(--terra)">この旅を削除</span></div></div></div>` : '' }
+    </div>`;
+  mask.classList.add("open");
+}
+function saveJourney(id){
+  const ttl=document.getElementById("jt").value.trim();
+  const detail=document.getElementById("jd").value;
+  if(!ttl){ closeSheet(); return; }
+  if(id){ const j=journeys.find(x=>x.id===id); if(j){ j.ttl=ttl; j.detail=detail; } }
+  else { journeys.unshift({ id:++uid, ttl, detail }); }
+  closeSheet(); render();
+}
+function deleteJourney(id){ journeys=journeys.filter(x=>x.id!==id); closeSheet(); render(); }
+
+// ===== タスク編集（タップで開く）=====
+let edft=null;
+function openTaskEdit(id){
+  const t=tasks.find(x=>x.id===id); if(!t) return;
+  edft={ id, cat:t.cat, grp:t.grp, min:t.min, hasDl:!!t.dl,
+    dl: t.dl ? new Date(t.dl - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16) : "",
+    ttl:t.ttl };
+  renderTaskEdit();
+  mask.classList.add("open");
+}
+function renderTaskEdit(){
+  const groups = edft.cat==="output"?outGroups:inGroups;
+  sheet.innerHTML=`
+    <div class="sheet-nav"><button onclick="closeSheet()">Cancel</button><span class="t">Edit</span>
+      <button class="primary" onclick="saveTaskEdit()" ${edft.ttl.trim()?'':'disabled'}>Save</button></div>
+    <div class="sheet-body">
+      <div class="fs"><div class="fcard"><input type="text" id="ett" placeholder="内容" value="${(edft.ttl||'').replace(/"/g,'&quot;')}"></div></div>
+      <div class="fs"><div class="lab">Type</div><div class="seg">
+        <button class="${edft.cat==='output'?'on':''}" onclick="edft.cat='output';edft.grp=outGroups[0]||null;renderTaskEdit()">Output</button>
+        <button class="${edft.cat==='input'?'on':''}" onclick="edft.cat='input';edft.grp=null;renderTaskEdit()">Input</button>
+      </div></div>
+      <div class="fs"><div class="lab">Group</div><div class="grp-wrap">
+        ${groups.map(g=>`<button class="gchip ${edft.grp===g?'on':''}" onclick="edft.grp='${g}';renderTaskEdit()">${g}</button>`).join('')}
+        <button class="gchip ${edft.grp===null?'on':''}" onclick="edft.grp=null;renderTaskEdit()">None</button>
+      </div></div>
+      <div class="fs"><div class="lab">Est. time</div><div class="fcard">
+        <div class="opt"><span>Duration</span>
+          <select onchange="edft.min=+this.value">${TIME.map(m=>`<option value="${m}" ${m===edft.min?'selected':''}>${tlabel(m)}</option>`).join('')}</select>
+        </div></div></div>
+      <div class="fs"><div class="lab">Deadline</div><div class="fcard">
+        <div class="opt"><span>Set a deadline</span>
+          <label class="switch"><input type="checkbox" ${edft.hasDl?'checked':''} onchange="edft.hasDl=this.checked; if(edft.hasDl&&!edft.dl){const d=new Date(Date.now()+3600000);edft.dl=d.toISOString().slice(0,16);} renderTaskEdit()"><span class="slider"></span></label></div>
+        ${edft.hasDl?`<div class="opt"><span>When</span><input type="datetime-local" value="${edft.dl}" onchange="edft.dl=this.value"></div>`:''}
+      </div></div>
+      <div class="fs"><div class="fcard"><div class="opt" style="cursor:pointer" onclick="deleteTaskEdit()"><span style="color:var(--terra)">この項目を削除</span></div></div></div>
+    </div>`;
+  const tt=document.getElementById("ett");
+  tt.addEventListener("input",e=>{ edft.ttl=e.target.value; });
+}
+function saveTaskEdit(){
+  edft.ttl=document.getElementById("ett").value.trim();
+  if(!edft.ttl) return;
+  const t=tasks.find(x=>x.id===edft.id); if(!t){ closeSheet(); return; }
+  t.ttl=edft.ttl; t.cat=edft.cat; t.grp=edft.grp; t.min=edft.min;
+  t.dl = edft.hasDl && edft.dl ? new Date(edft.dl).getTime() : null;
+  closeSheet(); render(); hint("Saved");
+}
+function deleteTaskEdit(){ tasks=tasks.filter(x=>x.id!==edft.id); closeSheet(); render(); hint("Deleted"); }
 
 // ===== Settings =====
 function renderSettings(){
@@ -494,29 +576,6 @@ function toggleDl(v){ dft.hasDl=v; if(v&&!dft.dl){ const d=new Date(Date.now()+3
 function saveTask(){ dft.ttl=document.getElementById("tt").value.trim(); if(!dft.ttl)return;
   tasks.push({id:++uid,cat:dft.cat,grp:dft.grp,ttl:dft.ttl,min:dft.min,dl:dft.hasDl&&dft.dl?new Date(dft.dl).getTime():null,done:false});
   closeSheet(); render(); hint("Added"); }
-
-// ----- Resolution edit -----
-function openRes(id){
-  const r=id?resolutions.find(x=>x.id===id):null; const c=r?{...r}:{ttl:"",period:"",body:"",img:null};
-  sheet.innerHTML=`
-    <div class="sheet-nav"><button onclick="closeSheet()">Cancel</button><span class="t">${r?'Edit':'New'}</span>
-      <button class="primary" onclick="saveRes(${id||'null'})">Save</button></div>
-    <div class="sheet-body">
-      <div class="fs"><div class="lab">Title</div><div class="fcard"><input type="text" id="rt" placeholder="例: 2025年の決意" value="${c.ttl}"></div></div>
-      <div class="fs"><div class="lab">Period</div><div class="fcard"><input type="text" id="rp" placeholder="例: 2025 / Q1 / Jan" value="${c.period||''}"></div></div>
-      <div class="fs"><div class="lab">Notes</div><div class="fcard"><textarea id="rb" placeholder="自由に記述">${c.body||''}</textarea></div></div>
-      <div class="fs"><div class="lab">Image</div><div class="fcard">
-        <div id="rpv" style="padding:${c.img?'12px':'0'}">${c.img?`<img src="${c.img}" style="width:100%;border-radius:8px">`:''}</div>
-        <div class="opt" style="cursor:pointer" onclick="document.getElementById('rf').click()"><span style="color:var(--accent)">Choose image</span>${I.img}</div>
-        <input type="file" id="rf" accept="image/*" style="display:none"></div></div>
-    </div>`;
-  let img=c.img;
-  document.getElementById("rf").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();
-    fr.onload=ev=>{img=ev.target.result; const p=document.getElementById("rpv"); p.innerHTML=`<img src="${img}" style="width:100%;border-radius:8px">`; p.style.padding="12px";}; fr.readAsDataURL(f);});
-  window._sr=(rid)=>{ const ttl=document.getElementById("rt").value.trim(),period=document.getElementById("rp").value.trim(),body=document.getElementById("rb").value;
-    if(rid){Object.assign(resolutions.find(x=>x.id===rid),{ttl,period,body,img});} else {resolutions.push({id:++uid,ttl,period,body,img});} closeSheet(); render(); };
-}
-function saveRes(id){ window._sr(id); }
 
 // ----- Notifications -----
 function openNotif(){ renderNotif(); mask.classList.add("open"); }
@@ -615,40 +674,28 @@ async function enablePush(){
   } catch(e){ if(msg) msg.textContent="失敗: " + String(e); }
 }
 
-// ===== Sync シート =====
+// ===== Sync シート（ログインは自動なので状態表示＋通知のみ）=====
 function openSync(){
-  const inner = user ? `
-      <div class="fs"><div class="lab">Account</div><div class="fcard">
-        <div class="opt"><span>${user.email}</span><span style="color:var(--accent);font-size:13px">同期中</span></div>
-      </div></div>
+  const status = user
+    ? `<span style="color:var(--accent);font-size:13px">同期中（全端末）</span>`
+    : `<span style="color:var(--faint);font-size:13px">接続中…</span>`;
+  sheet.innerHTML = `
+    <div class="sheet-nav"><button onclick="closeSheet()">Done</button><span class="t">Sync &amp; Backup</span><span style="width:42px"></span></div>
+    <div class="sheet-body">
+      <div class="fs"><div class="lab">Cloud</div><div class="fcard">
+        <div class="opt"><span>自動同期</span>${status}</div>
+      </div>
+      <div class="note">ログイン不要。全端末で自動的にデータが同期・保存されます（消えません）。</div></div>
       <div class="fs"><div class="lab">Notifications</div><div class="fcard">
         <div class="opt" style="cursor:pointer" onclick="enablePush()"><span style="color:var(--accent)">この端末で通知を有効化</span></div>
       </div>
       <div class="note">ホーム画面に追加したアプリから許可すると、毎時ロック画面通知＋バッジが届きます（iOS 16.4以降）。</div></div>
-      <div class="fs"><div class="fcard">
-        <div class="opt" style="cursor:pointer" onclick="authLogout()"><span style="color:var(--terra)">ログアウト</span></div>
-      </div></div>
       <div id="sync-msg" class="note"></div>
-  ` : `
-      <div class="fs"><div class="lab">メールでログイン / 新規登録</div><div class="fcard">
-        <input type="email" id="sync-email" placeholder="メールアドレス" autocomplete="username">
-        <div style="height:.5px;background:var(--line)"></div>
-        <input type="password" id="sync-pass" placeholder="パスワード（8文字以上）" autocomplete="current-password">
-      </div></div>
-      <div class="fs"><div class="seg">
-        <button onclick="authSubmit('login')">ログイン</button>
-        <button onclick="authSubmit('signup')">新規登録</button>
-      </div></div>
-      <div id="sync-msg" class="note"></div>
-      <div class="note">同じメール／パスワードでログインすれば、別の端末ともデータが同期し、クラウドに保存されて消えません。</div>
-  `;
-  sheet.innerHTML = `
-    <div class="sheet-nav"><button onclick="closeSheet()">Done</button><span class="t">Sync &amp; Backup</span><span style="width:42px"></span></div>
-    <div class="sheet-body">${inner}</div>`;
+    </div>`;
   mask.classList.add("open");
 }
 
-// ===== 認証の初期化・同期トリガー =====
+// ===== 認証の初期化（あなた専用アカウントで自動ログイン）=====
 async function initAuth(){
   if(!sb) return;
   sb.auth.onAuthStateChange((_e, s) => {
@@ -659,6 +706,10 @@ async function initAuth(){
   try {
     const { data } = await sb.auth.getSession();
     user = data.session?.user ?? null;
+    if(!user){
+      const res = await sb.auth.signInWithPassword({ email: OWNER_EMAIL, password: OWNER_PASSWORD });
+      user = res.data?.user ?? null;
+    }
   } catch(e){}
   if(user) await cloudPullAndMerge();
   render();
