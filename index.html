@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="ActionForce">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   :root {
@@ -237,21 +238,72 @@ let resolutions = [
 let notif = { enabled:true, start:8, end:22 };
 let uid = 100, currentTab = "output", showDone = false;
 
-// ===== 永続化（localStorage）=====
+// ===== クラウド設定（公開OKな値）=====
+const SB_URL = "https://dcaokotbtqsdwbyeghbo.supabase.co";
+const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjYW9rb3RidHFzZHdieWVnaGJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3ODYyNzQsImV4cCI6MjEwMTM2MjI3NH0.JT5DCS72W6HxI358qI4QPG2Ny-8stADAvbWSCzMJBF4";
+const VAPID_PUBLIC = "BH2i-8Ho5-4biLwTnhRjUwkQkmabu7lX2M-n_1qFAN2KbPDC4UyufN5vvkeJ2eOImKHXuaSwrbI6mEsX7-E102s";
+
+let sb = null, user = null;
+if (window.supabase) {
+  sb = window.supabase.createClient(SB_URL, SB_ANON, { auth: { persistSession: true, storageKey: "af_auth" } });
+}
+
+// ===== 永続化（localStorage ＋ クラウド）=====
 const LS_KEY = "actionforce_v1";
+let lastSavedAt = null;
+
+function currentStateObj(){
+  return { outGroups, inGroups, tasks, resolutions, notif, uid,
+    tzOffsetMinutes: new Date().getTimezoneOffset(),
+    _savedAt: new Date().toISOString() };
+}
+function applyState(s){
+  if(!s) return;
+  outGroups = s.outGroups ?? outGroups;
+  inGroups  = s.inGroups  ?? inGroups;
+  tasks     = s.tasks     ?? tasks;
+  resolutions = s.resolutions ?? resolutions;
+  notif     = s.notif     ?? notif;
+  uid       = s.uid       ?? uid;
+  lastSavedAt = s._savedAt ?? lastSavedAt;
+}
 function saveState(){
-  try { localStorage.setItem(LS_KEY, JSON.stringify({outGroups,inGroups,tasks,resolutions,notif,uid})); } catch(e){}
+  const obj = currentStateObj();
+  lastSavedAt = obj._savedAt;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(obj)); } catch(e){}
+  if (user) scheduleCloudPush();
 }
 function loadState(){
+  try { applyState(JSON.parse(localStorage.getItem(LS_KEY))); } catch(e){}
+}
+
+// クラウド書き込み（デバウンス）
+let pushTimer = null;
+function scheduleCloudPush(){ if(!sb||!user) return; clearTimeout(pushTimer); pushTimer = setTimeout(doCloudPush, 800); }
+async function doCloudPush(){
+  if(!sb||!user) return;
   try {
-    const s = JSON.parse(localStorage.getItem(LS_KEY));
-    if(s){
-      outGroups = s.outGroups ?? outGroups;
-      inGroups  = s.inGroups  ?? inGroups;
-      tasks     = s.tasks     ?? tasks;
-      resolutions = s.resolutions ?? resolutions;
-      notif     = s.notif     ?? notif;
-      uid       = s.uid       ?? uid;
+    const obj = JSON.parse(localStorage.getItem(LS_KEY));
+    await sb.from("app_state").upsert({ user_id: user.id, data: obj, updated_at: obj._savedAt });
+  } catch(e){}
+}
+// クラウドから取得して、新しければ採用
+async function cloudPullAndMerge(){
+  if(!sb||!user) return;
+  try {
+    const { data } = await sb.from("app_state").select("data,updated_at").eq("user_id", user.id).maybeSingle();
+    if(data && data.data && Object.keys(data.data).length){
+      const remoteTs = data.data._savedAt || data.updated_at;
+      const localTs = lastSavedAt || "1970";
+      if(new Date(remoteTs) >= new Date(localTs)){
+        applyState(data.data);
+        try { localStorage.setItem(LS_KEY, JSON.stringify(data.data)); } catch(e){}
+        render();
+      } else {
+        scheduleCloudPush(); // ローカルが新しい→アップ
+      }
+    } else {
+      scheduleCloudPush(); // クラウド未作成→ローカルを種に
     }
   } catch(e){}
 }
@@ -386,6 +438,9 @@ function renderResolution(){
 function renderSettings(){
   const el=document.getElementById("screen-settings");
   el.innerHTML=`
+    <div class="fs"><div class="lab">Cloud</div><div class="fcard">
+      <div class="opt" onclick="openSync()"><span>Sync &amp; Backup</span><span style="color:var(--faint);font-size:13px">${user ? "同期中" : "オフ"}</span></div>
+    </div></div>
     <div class="fs"><div class="lab">Reminders</div><div class="fcard">
       <div class="opt" onclick="openNotif()"><span>Lock-screen reminders</span>${I.chev}</div>
     </div></div>
@@ -518,8 +573,110 @@ function delGroup(i){
   arr.splice(i,1); renderGroups();
 }
 
+// ===== 認証（メール＋パスワード）=====
+async function authSubmit(mode){
+  const msg = document.getElementById("sync-msg");
+  const email = (document.getElementById("sync-email")||{}).value?.trim();
+  const pass = (document.getElementById("sync-pass")||{}).value;
+  if(!email || !pass){ if(msg) msg.textContent="メールとパスワードを入力してください"; return; }
+  if(msg) msg.textContent="処理中…";
+  try {
+    const res = mode==="signup"
+      ? await sb.auth.signUp({ email, password: pass })
+      : await sb.auth.signInWithPassword({ email, password: pass });
+    if(res.error){ if(msg) msg.textContent = res.error.message; return; }
+    closeSheet();
+  } catch(e){ if(msg) msg.textContent = String(e); }
+}
+async function authLogout(){ try { await sb.auth.signOut(); } catch(e){} closeSheet(); }
+
+// ===== Push購読 =====
+function urlB64ToUint8(b){
+  const pad = "=".repeat((4 - b.length % 4) % 4);
+  const s = (b + pad).replace(/-/g,"+").replace(/_/g,"/");
+  const raw = atob(s); const arr = new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+async function enablePush(){
+  const msg = document.getElementById("sync-msg");
+  if(!user){ if(msg) msg.textContent="先にログインしてください"; return; }
+  if(!("serviceWorker" in navigator) || !("PushManager" in window)){ if(msg) msg.textContent="この端末/ブラウザは通知に未対応です"; return; }
+  try {
+    const perm = await Notification.requestPermission();
+    if(perm !== "granted"){ if(msg) msg.textContent="通知が許可されませんでした"; return; }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC) });
+    await sb.from("push_subscriptions").delete().eq("user_id", user.id).eq("endpoint", sub.endpoint);
+    await sb.from("push_subscriptions").insert({ user_id: user.id, subscription: sub.toJSON() });
+    saveState(); // tzオフセットをクラウドへ
+    if(msg) msg.textContent="通知を有効化しました ✓";
+  } catch(e){ if(msg) msg.textContent="失敗: " + String(e); }
+}
+
+// ===== Sync シート =====
+function openSync(){
+  const inner = user ? `
+      <div class="fs"><div class="lab">Account</div><div class="fcard">
+        <div class="opt"><span>${user.email}</span><span style="color:var(--accent);font-size:13px">同期中</span></div>
+      </div></div>
+      <div class="fs"><div class="lab">Notifications</div><div class="fcard">
+        <div class="opt" style="cursor:pointer" onclick="enablePush()"><span style="color:var(--accent)">この端末で通知を有効化</span></div>
+      </div>
+      <div class="note">ホーム画面に追加したアプリから許可すると、毎時ロック画面通知＋バッジが届きます（iOS 16.4以降）。</div></div>
+      <div class="fs"><div class="fcard">
+        <div class="opt" style="cursor:pointer" onclick="authLogout()"><span style="color:var(--terra)">ログアウト</span></div>
+      </div></div>
+      <div id="sync-msg" class="note"></div>
+  ` : `
+      <div class="fs"><div class="lab">メールでログイン / 新規登録</div><div class="fcard">
+        <input type="email" id="sync-email" placeholder="メールアドレス" autocomplete="username">
+        <div style="height:.5px;background:var(--line)"></div>
+        <input type="password" id="sync-pass" placeholder="パスワード（8文字以上）" autocomplete="current-password">
+      </div></div>
+      <div class="fs"><div class="seg">
+        <button onclick="authSubmit('login')">ログイン</button>
+        <button onclick="authSubmit('signup')">新規登録</button>
+      </div></div>
+      <div id="sync-msg" class="note"></div>
+      <div class="note">同じメール／パスワードでログインすれば、別の端末ともデータが同期し、クラウドに保存されて消えません。</div>
+  `;
+  sheet.innerHTML = `
+    <div class="sheet-nav"><button onclick="closeSheet()">Done</button><span class="t">Sync &amp; Backup</span><span style="width:42px"></span></div>
+    <div class="sheet-body">${inner}</div>`;
+  mask.classList.add("open");
+}
+
+// ===== 認証の初期化・同期トリガー =====
+async function initAuth(){
+  if(!sb) return;
+  sb.auth.onAuthStateChange((_e, s) => {
+    user = s?.user ?? null;
+    render();
+    if(user) cloudPullAndMerge();
+  });
+  try {
+    const { data } = await sb.auth.getSession();
+    user = data.session?.user ?? null;
+  } catch(e){}
+  if(user) await cloudPullAndMerge();
+  render();
+}
+
+// 起動
 loadState();
 render();
+if("clearAppBadge" in navigator){ navigator.clearAppBadge().catch(()=>{}); }
+initAuth();
+
+// フォアグラウンド復帰時にクラウドと突き合わせ
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "visible" && user){
+    if("clearAppBadge" in navigator){ navigator.clearAppBadge().catch(()=>{}); }
+    cloudPullAndMerge();
+  }
+});
 
 // Service Worker 登録（オフライン & インストール対応）
 if ("serviceWorker" in navigator) {
